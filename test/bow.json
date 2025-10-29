@@ -1,0 +1,7 @@
+{  "service": {
+    "id": "md-gensim"
+  },
+  "task": {
+    "id": "bow"
+  }
+}

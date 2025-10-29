@@ -1,0 +1,13 @@
+{  "service": {
+    "id": "md-gensim"
+  },
+  "task": {
+    "id": "similarity_query",
+    "params": {
+      "query": "In eleifend, magna a aliquam elementum, sem tellus blandit urna, ac iaculis mi neque ut arcu. Duis ac est consequat tellus lobortis cursus. Curabitur nec sapien eu risus vulputate dictum vel at nisi."
+    }
+  },
+  "process": {
+    "@rid": "#1234567890:1234567890"
+  }
+}
