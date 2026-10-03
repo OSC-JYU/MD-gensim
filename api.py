@@ -5,11 +5,13 @@ from contextlib import asynccontextmanager
 import os
 import uuid
 import json
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Optional, Union
 import io
+import shutil
 import gensim
 from similarity import IncrementalSimilarityBuilder
 from pathlib import Path
+import md_storage
 
 
 builder = IncrementalSimilarityBuilder(window_size=15, overlap=5)
@@ -53,15 +55,18 @@ async def root():
 
 @app.post("/process")
 async def process_files(
-    message: UploadFile = File(...), 
-    content: UploadFile = File(...),
-    source: UploadFile = File(None),
+    message: UploadFile = File(...),
+    # without uploads the files are read from MessyDesk's storage (disk mode, see md_storage.py):
+    # content is message.file, source is message.file.source
+    content: Optional[UploadFile] = File(None),
+    source: Optional[UploadFile] = File(None),
     background_tasks: BackgroundTasks = BackgroundTasks()
 ):
-    if not message or not content:
-        raise HTTPException(status_code=400, detail='JSON file and text file are required')
-    if message.filename == '' or content.filename == '':
+    if not message:
+        raise HTTPException(status_code=400, detail='JSON file is required')
+    if message.filename == '' or (content is not None and content.filename == ''):
         raise HTTPException(status_code=400, detail='Empty file submitted')
+    disk = content is None
     
     try:
         
@@ -76,9 +81,13 @@ async def process_files(
                 msg = json.loads(msg)
 
             # Read content as bytes, decode only if it's a text file
-            print(f"Content type: {content.content_type}")
-            print(f"Filename: {content.filename}")
-            content_bytes = await content.read()
+            if not disk:
+                print(f"Content type: {content.content_type}")
+                print(f"Filename: {content.filename}")
+            if disk:
+                content_bytes = md_storage.message_input_path(msg).read_bytes()
+            else:
+                content_bytes = await content.read()
 
             try:
                 content_text = content_bytes.decode('utf-8')
@@ -87,7 +96,14 @@ async def process_files(
                 # If declared text but not decodable, keep as binary
                 content_payload = content_bytes
                 
-            if source:
+            source_payload = None
+            if disk and msg.get("task", {}).get("id") == "similarity_query":
+                source_bytes = md_storage.message_input_path(msg, "source").read_bytes()
+                try:
+                    source_payload = source_bytes.decode('utf-8')
+                except UnicodeDecodeError:
+                    source_payload = source_bytes
+            elif source:
                 try:
                     source_bytes = await source.read()
                     source_text = source_bytes.decode('utf-8')
@@ -116,24 +132,50 @@ async def process_files(
             response = similarity(content_payload, msg)
 
         elif msg.get("task", {}).get("id") == "similarity_query":
-            response = similarity_query(content_payload, source_payload, msg)
+            # the index is a tar archive: pass the raw bytes, not text that happened to decode
+            response = similarity_query(content_bytes, source_payload, msg)
         else:
-            return {"response": {}}
+            raise HTTPException(status_code=400, detail=f'Unsupported task: {msg.get("task", {}).get("id")}')
+        if disk:
+            return to_disk_response(response, msg)
         return response
 
     except HTTPException:
         # Re-raise HTTP exceptions as-is
         raise
+    except md_storage.StorageError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail=f'Processing failed: {str(e)}')
 
 
 
-@app.get("/files/{filename:path}")
+def to_disk_response(response: dict, msg: Dict) -> dict:
+    """Move the task's outputs from OUTPUT_FOLDER to MessyDesk's tmp/ (disk mode).
+
+    Labels and types are the ones the elg adapter gives the same output over HTTP: a uri list keeps
+    the file name, and the type comes from the extension (a double extension for .json files).
+    """
+    files = []
+    for uri in response["response"]["uri"]:
+        name = os.path.basename(uri)
+        parts = name.split(".")
+        extension = parts[-1]
+        if extension == "json":
+            file_type = ".".join(parts[-2:]) if len(parts) > 2 else "json"
+        else:
+            file_type = "text"
+        files.append(md_storage.stage_output(msg, Path(OUTPUT_FOLDER) / name, name, file_type, extension))
+    return md_storage.disk_response(files)
+
+
+@app.get("/files/{filename}")
 def serve_file(filename: str, background_tasks: BackgroundTasks):
-    file_path = os.path.join(OUTPUT_FOLDER, filename)
-    if not os.path.isfile(file_path):
+    output_dir = os.path.realpath(OUTPUT_FOLDER)
+    file_path = os.path.realpath(os.path.join(output_dir, filename))
+    # only files directly in OUTPUT_FOLDER; '../' paths could read any file
+    if os.path.dirname(file_path) != output_dir or not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail='File not found')
 
     def remove_file(path):
@@ -183,6 +225,8 @@ def similarity(content_text: str, msg: Dict) -> dict:
     builder.add_document(content_text)
     builder.build_similarity_index(directory=index_path, save_to_disk=True)
     builder.archive_directory_to_tar(source_dir=index_path, output_tar_path=tar_path)
+    # only the tar is served; the unpacked index dir would stay in OUTPUT_FOLDER for good
+    shutil.rmtree(index_path, ignore_errors=True)
 
     msg["response"] = {"file": {"type": "similarity_index", "label": outfile}}
     return {"response": {"type": "stored", "uri": [f"/files/{outfile}"]}, "message": msg}
@@ -202,24 +246,28 @@ def similarity_query(content_payload: bytes, source_text: str, msg: Dict) -> dic
     with open(temp_tar, 'wb') as f:
         f.write(content_payload)
     
-    # Extract the tar file
-    extract_dir.mkdir(exist_ok=True)
-    with tarfile.open(temp_tar, 'r') as tar:
-        tar.extractall(extract_dir)
-    
-    os.remove(temp_tar)  # Clean up temp file
-    
-    # Load the similarity model from the extracted directory
-    model_components = builder.load_similarity_model(str(extract_dir))
-    print("Model loaded successfully")
+    try:
+        # Extract the tar file
+        extract_dir.mkdir(exist_ok=True)
+        with tarfile.open(temp_tar, 'r') as tar:
+            # the 'data' filter refuses members that would land outside extract_dir (absolute paths,
+            # '../', links); it exists in Python 3.12 and in 3.9.17+ / 3.10.12+ / 3.11.4+
+            if hasattr(tarfile, 'data_filter'):
+                tar.extractall(extract_dir, filter='data')
+            else:
+                tar.extractall(extract_dir)
 
-    if not extract_dir.exists():
-        raise HTTPException(status_code=404, detail='Similarity index not found. Please upload the index tar file first.')
-    
-    # Use the query_similarity method
-    results = builder.query_similarity(msg, model_components, source_text)
-    print(results)
-    builder.clear_similarity_index(str(extract_dir))
+        # Load the similarity model from the extracted directory
+        model_components = builder.load_similarity_model(str(extract_dir))
+        print("Model loaded successfully")
+
+        # Use the query_similarity method
+        results = builder.query_similarity(msg, model_components, source_text)
+        print(results)
+    finally:
+        # also on failure, so a bad archive doesn't leave its files in OUTPUT_FOLDER
+        temp_tar.unlink(missing_ok=True)
+        shutil.rmtree(extract_dir, ignore_errors=True)
     
     # Create output file with results
     outfile = f"{process_id}.similarity_results.json"
@@ -237,4 +285,5 @@ def similarity_query(content_payload: bytes, source_text: str, msg: Dict) -> dic
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=9009, limit_concurrency=2048) 
+    print(f"storage mode: {md_storage.describe_mode()}")
+    uvicorn.run(app, host="0.0.0.0", port=9009, limit_concurrency=2048)

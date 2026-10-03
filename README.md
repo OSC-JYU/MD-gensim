@@ -54,3 +54,12 @@ Similarity index creation (httpie version):
 
 
 
+
+## Storage modes
+
+The service picks its mode at start-up:
+
+- **Disk mode** when `MD_PATH` points at the MessyDesk root (the directory that contains `data/`). The service reads the input from `message.file.path` (and, for `similarity_query`, the source text from `message.file.source.path`) and writes its output to `MD_PATH/data/<db>/tmp/`. The descriptor kept for this service must then name the `elg_fs` adapter. In a container, mount MessyDesk's `data/` and set `MD_PATH` to the mount's parent directory, for example `-v /path/to/MessyDesk/data:/app/data -e MD_PATH=/app`.
+- **HTTP mode** when `MD_PATH` is unset or has no `data/`. The input comes as the `content` upload, outputs are served from `/files`, and the descriptor must name `elg`. `STORAGE_MODE=http` forces this mode.
+
+A request that uploads `content` is always handled in HTTP mode. The service has no `/config` yet, so it can't report the adapter itself.
