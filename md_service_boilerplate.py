@@ -39,6 +39,8 @@ def _cleanup_stale_store(store_dir: Path, max_age_seconds: int) -> None:
     except FileNotFoundError:
         return
     for entry in entries:
+        if entry.name.startswith("."):
+            continue  # e.g. the .gitignore that keeps the store directory in git
         try:
             if entry.stat().st_mtime >= cutoff:
                 continue
