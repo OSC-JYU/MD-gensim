@@ -1,6 +1,9 @@
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-gensim==4.3.3
-python-multipart==0.0.6
-
-
+fastapi
+uvicorn
+python-multipart
+numpy
+gensim>=4.4
+scikit-learn
+safetensors
+stopwordsiso
+matplotlib

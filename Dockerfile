@@ -1,23 +1,17 @@
-# Use Python 3.9 as base image
-FROM python:3.9-slim
+FROM python:3.12-slim
 
-# Set working directory
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PORT=9009 \
+    MPLCONFIGDIR=/tmp/matplotlib
+
 WORKDIR /app
 
-# Create data directory for mounting
-RUN mkdir -p /app/data
-
-# Copy requirements file
 COPY requirements.txt .
-
-# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application code
-COPY api.py similarity.py md_storage.py ./
+COPY api.py bow.py similarity.py storage.py text.py topics.py md_service_boilerplate.py service.json index.md ./
 
-# Expose the port the app runs on
 EXPOSE 9009
 
-# Command to run the application
-CMD ["python", "api.py"] 
+CMD ["python", "api.py"]

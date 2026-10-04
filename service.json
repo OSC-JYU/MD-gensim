@@ -1,0 +1,328 @@
+{
+  "id": "md-gensim",
+  "name": "Gensim",
+  "adapter": "elg_fs",
+  "status": "experimental",
+  "category": "linguistic",
+  "description": "Classic text analysis with Gensim: word counts, TF-IDF similarity search and text reuse, and topic models (LDA, NMF, LSI, HDP, k-means).",
+  "local_url": "http://localhost:9009",
+  "source_url": "https://radimrehurek.com/gensim/",
+  "supported_types": [
+    "text",
+    "similarity_index"
+  ],
+  "supported_formats": [
+    "txt",
+    "md",
+    "safetensors"
+  ],
+  "tasks": {
+    "bow": {
+      "name": "Bag of words",
+      "description": "Every word of the text with its count, most frequent first.",
+      "behaviour": "one-to-one",
+      "supported_types": [
+        "text"
+      ],
+      "params_help": {
+        "remove_stopwords": {
+          "name": "Leave out stop words",
+          "display": "checkbox",
+          "default": false
+        },
+        "languages": {
+          "name": "Stop-word languages",
+          "display": "checkbox",
+          "multi": true,
+          "values": {
+            "fi": "Finnish",
+            "sv": "Swedish",
+            "en": "English",
+            "de": "German",
+            "fr": "French",
+            "ru": "Russian",
+            "et": "Estonian",
+            "no": "Norwegian",
+            "da": "Danish",
+            "nl": "Dutch",
+            "es": "Spanish",
+            "it": "Italian",
+            "pt": "Portuguese",
+            "pl": "Polish",
+            "la": "Latin"
+          },
+          "help": "Common words of these languages are left out of topic names. None chosen: Finnish and English."
+        },
+        "language_codes": {
+          "name": "Other languages",
+          "help": "More stop-word lists by ISO code, e.g. 'hu, cs'. 58 languages are available.",
+          "default": ""
+        },
+        "extra_stopwords": {
+          "name": "Extra stop words",
+          "help": "Your own words to leave out, separated by commas (e.g. OCR noise).",
+          "default": ""
+        }
+      }
+    },
+    "similarity_index": {
+      "name": "Similarity index",
+      "description": "TF-IDF index of this text. Open it and paste another text to find the passages they share.",
+      "behaviour": "one-to-one",
+      "set_disabled": true,
+      "supported_types": [
+        "text"
+      ],
+      "params_help": {
+        "window": {
+          "name": "Passage length (words)",
+          "help": "The texts are compared in passages of this many words. Short passages find short quotes; long ones find paraphrases.",
+          "default": "15"
+        },
+        "overlap": {
+          "name": "Overlap (words)",
+          "help": "Words shared by consecutive passages, so that a match is not cut in two.",
+          "default": "5"
+        }
+      }
+    },
+    "similarity_index_set": {
+      "name": "Similarity index",
+      "description": "TF-IDF index of the texts of this set. Open it and paste a text to find which texts share passages with it; also searchable in the Search tab.",
+      "behaviour": "whole-set",
+      "output": "file",
+      "supported_formats": [
+        "txt",
+        "md"
+      ],
+      "params_help": {
+        "window": {
+          "name": "Passage length (words)",
+          "help": "The texts are compared in passages of this many words. Short passages find short quotes; long ones find paraphrases.",
+          "default": "15"
+        },
+        "overlap": {
+          "name": "Overlap (words)",
+          "help": "Words shared by consecutive passages, so that a match is not cut in two.",
+          "default": "5"
+        }
+      }
+    },
+    "search": {
+      "name": "Similarity search",
+      "description": "Used by the index viewer and the Search tab: the passages of the index most like a query text.",
+      "behaviour": "one-to-one",
+      "filter": "internal",
+      "supported_types": [
+        "similarity_index"
+      ],
+      "params_help": {
+        "query": {
+          "name": "Query",
+          "default": ""
+        },
+        "top_k": {
+          "name": "Hits",
+          "default": "20"
+        },
+        "threshold": {
+          "name": "Smallest similarity",
+          "help": "Text reuse: passages less alike than this are not matches.",
+          "default": "0.3"
+        }
+      }
+    },
+    "topics": {
+      "name": "Topics",
+      "description": "Topic model of the texts of this set with a method of your choice. Writes topics.json and a chart of each topic's words; run it again with another method to compare.",
+      "behaviour": "whole-set",
+      "output": "file",
+      "supported_formats": [
+        "txt",
+        "md"
+      ],
+      "params_help": {
+        "method": {
+          "name": "Method",
+          "display": "dropdown",
+          "values": {
+            "lda": "LDA: documents as mixes of topics",
+            "nmf": "NMF: matrix factorization, often cleaner on short or noisy texts",
+            "lsi": "LSI: fast, topics as directions (words can weigh negatively)",
+            "hdp": "HDP: chooses the number of topics itself",
+            "kmeans": "k-means: each document in exactly one cluster"
+          },
+          "default": "lda"
+        },
+        "num_topics": {
+          "name": "Number of topics",
+          "help": "Topics (clusters for k-means) to find. HDP ignores this.",
+          "default": "10"
+        },
+        "unit": {
+          "name": "Unit",
+          "display": "dropdown",
+          "values": {
+            "texts": "Texts: each text is one document",
+            "passages": "Passages: texts split into passages"
+          },
+          "default": "texts"
+        },
+        "passage_words": {
+          "name": "Passage length (words)",
+          "help": "With passages: words in each passage.",
+          "default": "200"
+        },
+        "languages": {
+          "name": "Stop-word languages",
+          "display": "checkbox",
+          "multi": true,
+          "values": {
+            "fi": "Finnish",
+            "sv": "Swedish",
+            "en": "English",
+            "de": "German",
+            "fr": "French",
+            "ru": "Russian",
+            "et": "Estonian",
+            "no": "Norwegian",
+            "da": "Danish",
+            "nl": "Dutch",
+            "es": "Spanish",
+            "it": "Italian",
+            "pt": "Portuguese",
+            "pl": "Polish",
+            "la": "Latin"
+          },
+          "help": "Common words of these languages are left out of topic names. None chosen: Finnish and English."
+        },
+        "language_codes": {
+          "name": "Other languages",
+          "help": "More stop-word lists by ISO code, e.g. 'hu, cs'. 58 languages are available.",
+          "default": ""
+        },
+        "extra_stopwords": {
+          "name": "Extra stop words",
+          "help": "Your own words to leave out, separated by commas (e.g. OCR noise).",
+          "default": ""
+        },
+        "min_docs": {
+          "name": "Rare words",
+          "help": "Leave out words that are in fewer than this many documents. Empty: 2 (1 for fewer than 10 documents).",
+          "default": ""
+        },
+        "max_share": {
+          "name": "Common words (%)",
+          "help": "Leave out words that are in more than this share of the documents.",
+          "default": "50"
+        },
+        "passes": {
+          "name": "Passes",
+          "help": "LDA, NMF and HDP: training rounds over the documents. More is slower but more stable.",
+          "default": "10"
+        },
+        "autotag": {
+          "name": "Tag texts with their topics",
+          "display": "checkbox",
+          "default": false
+        },
+        "seed": {
+          "name": "Random seed",
+          "help": "Same seed and settings give the same topics.",
+          "default": "42"
+        }
+      }
+    },
+    "topics_text": {
+      "name": "Topics",
+      "description": "Topics within this text: the text is split into passages and they are modelled with a method of your choice.",
+      "behaviour": "one-to-one",
+      "set_disabled": true,
+      "supported_types": [
+        "text"
+      ],
+      "params_help": {
+        "method": {
+          "name": "Method",
+          "display": "dropdown",
+          "values": {
+            "lda": "LDA: documents as mixes of topics",
+            "nmf": "NMF: matrix factorization, often cleaner on short or noisy texts",
+            "lsi": "LSI: fast, topics as directions (words can weigh negatively)",
+            "hdp": "HDP: chooses the number of topics itself",
+            "kmeans": "k-means: each document in exactly one cluster"
+          },
+          "default": "lda"
+        },
+        "num_topics": {
+          "name": "Number of topics",
+          "help": "Topics (clusters for k-means) to find. HDP ignores this.",
+          "default": "10"
+        },
+        "passage_words": {
+          "name": "Passage length (words)",
+          "help": "With passages: words in each passage.",
+          "default": "200"
+        },
+        "languages": {
+          "name": "Stop-word languages",
+          "display": "checkbox",
+          "multi": true,
+          "values": {
+            "fi": "Finnish",
+            "sv": "Swedish",
+            "en": "English",
+            "de": "German",
+            "fr": "French",
+            "ru": "Russian",
+            "et": "Estonian",
+            "no": "Norwegian",
+            "da": "Danish",
+            "nl": "Dutch",
+            "es": "Spanish",
+            "it": "Italian",
+            "pt": "Portuguese",
+            "pl": "Polish",
+            "la": "Latin"
+          },
+          "help": "Common words of these languages are left out of topic names. None chosen: Finnish and English."
+        },
+        "language_codes": {
+          "name": "Other languages",
+          "help": "More stop-word lists by ISO code, e.g. 'hu, cs'. 58 languages are available.",
+          "default": ""
+        },
+        "extra_stopwords": {
+          "name": "Extra stop words",
+          "help": "Your own words to leave out, separated by commas (e.g. OCR noise).",
+          "default": ""
+        },
+        "min_docs": {
+          "name": "Rare words",
+          "help": "Leave out words that are in fewer than this many documents. Empty: 2 (1 for fewer than 10 documents).",
+          "default": ""
+        },
+        "max_share": {
+          "name": "Common words (%)",
+          "help": "Leave out words that are in more than this share of the documents.",
+          "default": "50"
+        },
+        "passes": {
+          "name": "Passes",
+          "help": "LDA, NMF and HDP: training rounds over the documents. More is slower but more stable.",
+          "default": "10"
+        },
+        "autotag": {
+          "name": "Tag texts with their topics",
+          "display": "checkbox",
+          "default": false
+        },
+        "seed": {
+          "name": "Random seed",
+          "help": "Same seed and settings give the same topics.",
+          "default": "42"
+        }
+      }
+    }
+  }
+}

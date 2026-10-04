@@ -1,65 +1,79 @@
-
 # MD-gensim
 
-## Introduction
+Classic text analysis for [MessyDesk](https://github.com/OSC-JYU/MessyDesk) with
+[Gensim](https://radimrehurek.com/gensim/): word counts, TF-IDF similarity (search and text reuse)
+and topic models. The user help is [index.md](index.md) (served at `/help`); the tasks and their
+settings are in [service.json](service.json) (served at `/config`).
 
-MD-gensim is a Natural Language Processing (NLP) service for **MessyDesk**, a digital humanities platform. This service provides text analysis capabilities using the Gensim library.
+| Task | Input | Output |
+|---|---|---|
+| `bow` | a text | `<name>.bow.json`: `[{word, count}]`, most frequent first |
+| `similarity_index` | a text | `similarity_index` file (`.safetensors`) |
+| `similarity_index_set` | a set (whole-set) | `similarity_index` file of all its texts |
+| `search` (internal) | a `similarity_index` + `params.query` | hits, see below |
+| `topics` | a set (whole-set) | `topics_<method>.json` (`topics.json`) and a chart (`.png`) |
+| `topics_text` | a text | the same, for the passages of the text |
 
-### Functionality
+## Similarity
 
-The API offers three main services:
+`similarity_index*` stores the words of every text as ids into a vocabulary, with the character
+span of each word, in a safetensors file (format `messydesk-tfidf-index/1`; vocabulary, files and
+settings in the header's `__metadata__`, like MD-embeddings' vector index). The passages (`window`
+words, `overlap` shared), the TF-IDF model and a gensim `SparseMatrixSimilarity` are rebuilt when
+the index is first searched and kept in memory (the last four indexes).
 
-1. **Bag of Words (BOW)** - Creates a bag of words list as JSON file (word +  word count).
+`search` takes `params.query`, `top_k` (default 20) and `threshold` (default 0.3). The query is
+split into passages of the index's length:
 
-2. **Similarity Index Creation** - Builds a searchable similarity index from document texts using TF-IDF (Term Frequency-Inverse Document Frequency) and sliding window chunking. The index is stored as a compressed archive.
+- one passage (a short query): the `top_k` best passages, without overlapping ones;
+- several (a pasted text): for each query passage the best passage of the index, if at least
+  `threshold` alike.
 
-3. **Similarity Query** - Searches pre-built similarity indexes to find passages in documents that match a given query text. 
+The result has the same shape as MD-embeddings' search (`doc_map`, `chunk_similarities` with
+`doc_index`, `similarity`, `text_start_char`, `text_end_char`), plus `query_start_char`,
+`query_end_char` and `query_start_token` (in whitespace-separated words, as the UI counts them).
+Both spans are narrowed to the first and last word the two passages share. With
+`role: "semantic_search"` (the backend's interactive search) the results come back in the answer;
+otherwise they are written to a `similarity.json` file.
 
+## Topics
 
-## API
+`params.method` is `lda`, `nmf`, `lsi`, `hdp` or `kmeans` (scikit-learn); see [index.md](index.md)
+for what each does. The output follows MD-bertopic's `messydesk-topics/1`: `topics` (words with
+weights, size, representative documents, c_v `coherence`), `pages` (each text's main topic and
+shares) and `file_tags` for autotagging, plus the run's mean `coherence` and, for k-means,
+`silhouette`.
 
-endpoint is http://localhost:9009/process
+## Running
 
-Payload is queue message as json file. 
+```bash
+make build
+make start
+```
 
-## Running as service (locally)
+The service listens on port 9009. Without podman, `CONTAINER_RUNTIME=docker make build`.
 
+Storage modes, as in MD-embeddings and MD-bertopic:
 
-Then build and start
+- **disk** (`elg_fs` adapter) when `MD_PATH` is set: inputs are read under `MD_PATH`, outputs are
+  written to `MD_PATH/data/<db>/tmp`. Mount MessyDesk's data and set `MD_PATH` to the mount's
+  parent, e.g. `-v /path/to/MessyDesk/data:/md/data -e MD_PATH=/md`.
+- **http** (`elg` adapter) otherwise, or with `STORAGE_MODE=http`: the input is the `content`
+  upload (a set as a zip of its files by label), outputs are served from `/files`.
 
-	make build
-	make start
+`/config` reports the adapter that matches the mode.
 
-or start container directly
+### Example call (disk mode)
 
- 	docker run --name md-gensim -p 9009:9009  
+```bash
+curl -F 'message={"task":{"id":"bow"},"file":{"@rid":"#1:1","label":"a.txt","path":"data/messydesk/projects/a.txt"}};type=application/json' \
+  http://localhost:9009/process
+```
 
+## Tests
 
+```bash
+make test
+```
 
-### Example API call 
-
-Run these from MD-gensim directory:
-
-Bag of Words:
-
-	curl -X POST -H "Content-Type: multipart/form-data" \
-	  -F "message=@test/bow.json;type=application/json" \
-	  -F "content=@test/text_fi.txt;type=plain/text" \
-	  http://localhost:9009/process
-
-
-Similarity index creation (httpie version):
-
-	http POST :9009/process message@test/similarity.json content@test/text_fi.txt --form
-
-
-
-
-## Storage modes
-
-The service picks its mode at start-up:
-
-- **Disk mode** when `MD_PATH` points at the MessyDesk root (the directory that contains `data/`). The service reads the input from `message.file.path` (and, for `similarity_query`, the source text from `message.file.source.path`) and writes its output to `MD_PATH/data/<db>/tmp/`. The descriptor kept for this service must then name the `elg_fs` adapter. In a container, mount MessyDesk's `data/` and set `MD_PATH` to the mount's parent directory, for example `-v /path/to/MessyDesk/data:/app/data -e MD_PATH=/app`.
-- **HTTP mode** when `MD_PATH` is unset or has no `data/`. The input comes as the `content` upload, outputs are served from `/files`, and the descriptor must name `elg`. `STORAGE_MODE=http` forces this mode.
-
-A request that uploads `content` is always handled in HTTP mode. The service has no `/config` yet, so it can't report the adapter itself.
+Runs the unit tests in the service image (gensim has no wheels for the newest Python versions).

@@ -1,32 +1,35 @@
-IMAGES := $(shell docker images -f "dangling=true" -q)
-CONTAINERS := $(shell docker ps -a -q -f status=exited)
-VOLUME := md-gensim
+CONTAINER_RUNTIME ?= podman
+IMAGES := $(shell $(CONTAINER_RUNTIME) images -f "dangling=true" -q)
+CONTAINERS := $(shell $(CONTAINER_RUNTIME) ps -a -q -f status=exited)
 VERSION := 0.1
-REPOSITORY := local
+REPOSITORY := messydesk
 IMAGE := md-gensim
+LOCAL_IMAGE := localhost/$(REPOSITORY)/$(IMAGE):$(VERSION)
+SHORT_IMAGE := $(REPOSITORY)/$(IMAGE):$(VERSION)
 
 
 clean:
-	docker rm -f $(CONTAINERS)
-	docker rmi -f $(IMAGES)
+	-$(CONTAINER_RUNTIME) rm -f $(CONTAINERS)
+	-$(CONTAINER_RUNTIME) rmi -f $(IMAGES)
 
 build:
-	docker build -t $(REPOSITORY)/messydesk/$(IMAGE):$(VERSION) .
+	$(CONTAINER_RUNTIME) build -t $(LOCAL_IMAGE) .
+	$(CONTAINER_RUNTIME) tag $(LOCAL_IMAGE) $(SHORT_IMAGE)
+
 
 start:
-	docker run -d --name $(IMAGE) \
-		-p 9009:9009 \
-		-e MD_URL=http://host.containers.internal:8200 \
-		--restart unless-stopped \
-		$(REPOSITORY)/messydesk/$(IMAGE):$(VERSION)
-stop:
-	docker stop $(IMAGE)
-	docker rm $(IMAGE)
-	
+	$(CONTAINER_RUNTIME) run --rm -it --name $(IMAGE) -p 9009:9009 $(LOCAL_IMAGE)
+
+
 restart:
-	$(MAKE) stop
+	-$(CONTAINER_RUNTIME) stop $(IMAGE)
+	-$(CONTAINER_RUNTIME) rm $(IMAGE)
 	$(MAKE) start
 
 bash:
-	docker exec -it $(IMAGE) bash
+	$(CONTAINER_RUNTIME) exec -it $(IMAGE) bash
 
+# Unit tests in a throwaway container (gensim has no wheels for every Python).
+test: build
+	$(CONTAINER_RUNTIME) run --rm -v $(CURDIR)/tests:/app/tests:ro,Z $(LOCAL_IMAGE) \
+		sh -c "pip install -q pytest && python -m pytest -q tests"
